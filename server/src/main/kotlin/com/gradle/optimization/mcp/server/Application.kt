@@ -6,6 +6,7 @@ import com.gradle.optimization.mcp.features.configcache.impl.di.configurationCac
 import com.gradle.optimization.mcp.features.dependencyinsight.impl.di.dependencyInsightModule
 import com.gradle.optimization.mcp.features.dryrun.impl.di.dryRunModule
 import com.gradle.optimization.mcp.features.isolation.impl.di.projectIsolationModule
+import com.gradle.optimization.mcp.features.linter.impl.di.pluginLinterModule
 import com.gradle.optimization.mcp.features.verification.impl.di.dependencyVerificationModule
 import com.gradle.optimization.mcp.server.di.ServerModule
 import com.gradle.optimization.mcp.server.di.module
@@ -40,6 +41,7 @@ fun main() = runBlocking {
             dependencyInsightModule,
             configurationCacheModule,
             dependencyVerificationModule,
+            pluginLinterModule,
             ServerModule().module()
         )
     }.koin

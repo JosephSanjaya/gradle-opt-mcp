@@ -51,5 +51,8 @@ include(
     ":features:dependency-verification",
     ":features:dependency-verification:api",
     ":features:dependency-verification:impl",
+    ":features:plugin-linter",
+    ":features:plugin-linter:api",
+    ":features:plugin-linter:impl",
     ":server"
 )
