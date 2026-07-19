@@ -23,6 +23,8 @@ dependencies {
     runtimeOnly(project(":features:dependency-verification:impl"))
     implementation(project(":features:plugin-linter"))
     runtimeOnly(project(":features:plugin-linter:impl"))
+    implementation(project(":features:build-scan"))
+    runtimeOnly(project(":features:build-scan:impl"))
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)

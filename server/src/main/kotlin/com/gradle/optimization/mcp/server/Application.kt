@@ -2,6 +2,7 @@ package com.gradle.optimization.mcp.server
 
 import com.gradle.optimization.mcp.core.api.GradleConfig
 import com.gradle.optimization.mcp.core.impl.di.coreModule
+import com.gradle.optimization.mcp.features.buildscan.impl.di.buildScanModule
 import com.gradle.optimization.mcp.features.configcache.impl.di.configurationCacheModule
 import com.gradle.optimization.mcp.features.dependencyinsight.impl.di.dependencyInsightModule
 import com.gradle.optimization.mcp.features.dryrun.impl.di.dryRunModule
@@ -42,6 +43,7 @@ fun main() = runBlocking {
             configurationCacheModule,
             dependencyVerificationModule,
             pluginLinterModule,
+            buildScanModule,
             ServerModule().module()
         )
     }.koin

@@ -54,5 +54,8 @@ include(
     ":features:plugin-linter",
     ":features:plugin-linter:api",
     ":features:plugin-linter:impl",
+    ":features:build-scan",
+    ":features:build-scan:api",
+    ":features:build-scan:impl",
     ":server"
 )
