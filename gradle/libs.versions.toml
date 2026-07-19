@@ -1,0 +1,41 @@
+[versions]
+detekt = "1.23.8"
+gradleToolingApi = "8.12"
+junit = "4.13.2"
+koin = "4.2.2"
+koinAnnotations = "2.0.0"
+koinCompilerPlugin = "1.0.1"
+kotlin = "2.4.10"
+kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.8.1"
+ktor = "3.5.1"
+logback = "1.5.38"
+mcpSdk = "0.13.0"
+
+[libraries]
+detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
+detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
+gradle-detekt = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
+gradle-koin-compiler = { module = "io.insert-koin:koin-compiler-gradle-plugin", version.ref = "koinCompilerPlugin" }
+gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+gradle-kotlin-serialization = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+gradle-tooling-api = { module = "org.gradle:gradle-tooling-api", version.ref = "gradleToolingApi" }
+junit = { module = "junit:junit", version.ref = "junit" }
+koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koinAnnotations" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+ktor-serverCore = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
+ktor-serverNetty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
+ktor-serverTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcpSdk" }
+
+[plugins]
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+koin-compiler = { id = "io.insert-koin.compiler.plugin", version.ref = "koinCompilerPlugin" }
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
