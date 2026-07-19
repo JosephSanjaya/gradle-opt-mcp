@@ -19,6 +19,8 @@ dependencies {
     runtimeOnly(project(":features:dependency-insight:impl"))
     implementation(project(":features:configuration-cache"))
     runtimeOnly(project(":features:configuration-cache:impl"))
+    implementation(project(":features:dependency-verification"))
+    runtimeOnly(project(":features:dependency-verification:impl"))
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)

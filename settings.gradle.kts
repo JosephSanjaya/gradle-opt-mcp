@@ -48,5 +48,8 @@ include(
     ":features:configuration-cache",
     ":features:configuration-cache:api",
     ":features:configuration-cache:impl",
+    ":features:dependency-verification",
+    ":features:dependency-verification:api",
+    ":features:dependency-verification:impl",
     ":server"
 )
