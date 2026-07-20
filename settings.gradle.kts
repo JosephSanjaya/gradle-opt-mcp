@@ -57,5 +57,14 @@ include(
     ":features:build-scan",
     ":features:build-scan:api",
     ":features:build-scan:impl",
+    ":features:declarative-schema",
+    ":features:declarative-schema:api",
+    ":features:declarative-schema:impl",
+    ":features:cache-profiler",
+    ":features:cache-profiler:api",
+    ":features:cache-profiler:impl",
+    ":features:parallelism-analyzer",
+    ":features:parallelism-analyzer:api",
+    ":features:parallelism-analyzer:impl",
     ":server"
 )

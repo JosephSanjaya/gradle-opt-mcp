@@ -3,11 +3,14 @@ package com.gradle.optimization.mcp.server
 import com.gradle.optimization.mcp.core.api.GradleConfig
 import com.gradle.optimization.mcp.core.impl.di.coreModule
 import com.gradle.optimization.mcp.features.buildscan.impl.di.buildScanModule
+import com.gradle.optimization.mcp.features.cacheprofiler.impl.di.cacheProfilerModule
 import com.gradle.optimization.mcp.features.configcache.impl.di.configurationCacheModule
+import com.gradle.optimization.mcp.features.declarative.impl.di.declarativeSchemaModule
 import com.gradle.optimization.mcp.features.dependencyinsight.impl.di.dependencyInsightModule
 import com.gradle.optimization.mcp.features.dryrun.impl.di.dryRunModule
 import com.gradle.optimization.mcp.features.isolation.impl.di.projectIsolationModule
 import com.gradle.optimization.mcp.features.linter.impl.di.pluginLinterModule
+import com.gradle.optimization.mcp.features.parallelism.impl.di.parallelismModule
 import com.gradle.optimization.mcp.features.verification.impl.di.dependencyVerificationModule
 import com.gradle.optimization.mcp.server.di.ServerModule
 import com.gradle.optimization.mcp.server.di.module
@@ -44,6 +47,9 @@ fun main() = runBlocking {
             dependencyVerificationModule,
             pluginLinterModule,
             buildScanModule,
+            declarativeSchemaModule,
+            cacheProfilerModule,
+            parallelismModule,
             ServerModule().module()
         )
     }.koin
