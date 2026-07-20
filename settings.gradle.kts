@@ -69,5 +69,8 @@ include(
     ":features:health",
     ":features:health:api",
     ":features:health:impl",
+    ":features:runner",
+    ":features:runner:api",
+    ":features:runner:impl",
     ":server"
 )

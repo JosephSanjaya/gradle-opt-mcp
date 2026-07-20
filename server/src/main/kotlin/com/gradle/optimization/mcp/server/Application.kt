@@ -12,6 +12,7 @@ import com.gradle.optimization.mcp.features.health.impl.di.healthModule
 import com.gradle.optimization.mcp.features.isolation.impl.di.projectIsolationModule
 import com.gradle.optimization.mcp.features.linter.impl.di.pluginLinterModule
 import com.gradle.optimization.mcp.features.parallelism.impl.di.parallelismModule
+import com.gradle.optimization.mcp.features.runner.impl.di.runnerModule
 import com.gradle.optimization.mcp.features.verification.impl.di.dependencyVerificationModule
 import com.gradle.optimization.mcp.server.di.ServerModule
 import com.gradle.optimization.mcp.server.di.module
@@ -52,6 +53,7 @@ fun main() = runBlocking {
             cacheProfilerModule,
             parallelismModule,
             healthModule,
+            runnerModule,
             ServerModule().module()
         )
     }.koin
