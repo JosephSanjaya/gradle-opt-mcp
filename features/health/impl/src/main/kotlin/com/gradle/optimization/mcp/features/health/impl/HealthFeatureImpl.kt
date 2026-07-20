@@ -34,8 +34,8 @@ class HealthFeatureImpl(
         val (rootProjectName, subprojectNames) = runCatching {
             pool.withConnection(targetDir) { connection ->
                 val rootProject = connection.getModel(GradleProject::class.java)
-                val names = rootProject.children.map { it.name }
-                Pair(rootProject.name, names)
+                val paths = collectAllSubprojectPaths(rootProject)
+                Pair(rootProject.name, paths)
             }
         }.getOrElse {
             Pair(targetDir.name, emptyList())
@@ -76,6 +76,15 @@ class HealthFeatureImpl(
             configurationCacheConfigFile = hasCcConfig,
             summary = summary
         )
+    }
+
+    private fun collectAllSubprojectPaths(project: GradleProject): List<String> {
+        val paths = mutableListOf<String>()
+        for (child in project.children) {
+            paths.add(child.path)
+            paths.addAll(collectAllSubprojectPaths(child))
+        }
+        return paths
     }
 
     private fun parseWrapperVersion(projectDir: File): String? {
