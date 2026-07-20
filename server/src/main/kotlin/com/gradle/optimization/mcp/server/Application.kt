@@ -6,6 +6,7 @@ import com.gradle.optimization.mcp.features.buildscan.impl.di.buildScanModule
 import com.gradle.optimization.mcp.features.cacheprofiler.impl.di.cacheProfilerModule
 import com.gradle.optimization.mcp.features.configcache.impl.di.configurationCacheModule
 import com.gradle.optimization.mcp.features.declarative.impl.di.declarativeSchemaModule
+import com.gradle.optimization.mcp.features.dependencygraph.impl.di.dependencyGraphModule
 import com.gradle.optimization.mcp.features.dependencyinsight.impl.di.dependencyInsightModule
 import com.gradle.optimization.mcp.features.dryrun.impl.di.dryRunModule
 import com.gradle.optimization.mcp.features.health.impl.di.healthModule
@@ -36,7 +37,8 @@ fun main() = runBlocking {
     System.setOut(System.err)
 
     val config = GradleConfig(
-        defaultProjectDir = System.getProperty("user.dir")
+        defaultProjectDir = System.getenv("GRADLE_PROJECT_DIR") ?: System.getProperty("user.dir"),
+        defaultVariant = System.getenv("GRADLE_VARIANT")
     )
 
     val koin = startKoin {
@@ -56,6 +58,7 @@ fun main() = runBlocking {
             healthModule,
             runnerModule,
             testSummaryModule,
+            dependencyGraphModule,
             ServerModule().module()
         )
     }.koin

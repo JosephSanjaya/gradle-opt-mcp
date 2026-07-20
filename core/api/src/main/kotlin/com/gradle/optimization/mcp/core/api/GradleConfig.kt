@@ -5,5 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class GradleConfig(
     val defaultProjectDir: String,
-    val gradleVersion: String? = null
+    val gradleVersion: String? = null,
+    val defaultVariant: String? = null
 )
