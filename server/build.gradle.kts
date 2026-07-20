@@ -31,6 +31,8 @@ dependencies {
     runtimeOnly(project(":features:cache-profiler:impl"))
     implementation(project(":features:parallelism-analyzer"))
     runtimeOnly(project(":features:parallelism-analyzer:impl"))
+    implementation(project(":features:health"))
+    runtimeOnly(project(":features:health:impl"))
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)

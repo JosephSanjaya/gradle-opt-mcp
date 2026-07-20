@@ -66,5 +66,8 @@ include(
     ":features:parallelism-analyzer",
     ":features:parallelism-analyzer:api",
     ":features:parallelism-analyzer:impl",
+    ":features:health",
+    ":features:health:api",
+    ":features:health:impl",
     ":server"
 )
