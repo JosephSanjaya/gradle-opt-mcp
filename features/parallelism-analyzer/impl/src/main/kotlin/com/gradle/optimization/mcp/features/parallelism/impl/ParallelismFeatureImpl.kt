@@ -11,6 +11,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.roundToInt
 
+private const val MAX_PARALLELIZABLE_FRACTION = 0.95
+private const val PERCENTAGE_MULTIPLIER = 100.0
+private const val TOP_BOTTLENECK_LIMIT = 5
+
 @Single
 class ParallelismFeatureImpl(
     @Provided private val pool: GradleConnectionPool
@@ -58,23 +62,26 @@ class ParallelismFeatureImpl(
         } else {
             0.0
         }
-        val parallelizableFraction = (pRaw.coerceIn(0.0, 0.95) * 100.0).roundToInt() / 100.0
+        val boundedPFraction = pRaw.coerceIn(0.0, MAX_PARALLELIZABLE_FRACTION)
+        val parallelizableFraction = (boundedPFraction * PERCENTAGE_MULTIPLIER).roundToInt() / PERCENTAGE_MULTIPLIER
         val n = request.maxThreads.coerceAtLeast(1)
         val denominator = (1.0 - parallelizableFraction) + (parallelizableFraction / n)
         val speedupRaw = if (denominator > 0.0) 1.0 / denominator else 1.0
-        val theoreticalSpeedup = (speedupRaw * 100.0).roundToInt() / 100.0
+        val theoreticalSpeedup = (speedupRaw * PERCENTAGE_MULTIPLIER).roundToInt() / PERCENTAGE_MULTIPLIER
 
         val projectCounts = criticalPathNodes.groupingBy { it.projectPath }.eachCount()
         val bottleneckModules = projectCounts.entries
             .sortedByDescending { it.value }
-            .take(5)
+            .take(TOP_BOTTLENECK_LIMIT)
             .map { it.key }
 
+        val parallelPercent = (parallelizableFraction * PERCENTAGE_MULTIPLIER).roundToInt()
         val summary = buildString {
             append("Amdahl's Law Speedup Analysis ($n threads): ")
             append("Theoretical speedup is ${theoreticalSpeedup}x with ")
-            append("${(parallelizableFraction * 100).roundToInt()}% parallelizable work fraction. ")
-            append("Critical execution path length: $criticalLength tasks across ${bottleneckModules.size} primary bottleneck module(s).")
+            append("$parallelPercent% parallelizable work fraction. ")
+            append("Critical execution path length: $criticalLength tasks across ")
+            append("${bottleneckModules.size} primary bottleneck module(s).")
         }
 
         return ParallelismAnalysisResult(

@@ -15,6 +15,7 @@ import org.koin.core.annotation.Provided
 import org.koin.core.annotation.Single
 
 private const val DEFAULT_MAX_THREADS = 8
+private const val CRITICAL_PATH_SAMPLE_LIMIT = 10
 
 @Single
 class ParallelismToolsRegistrar(
@@ -69,7 +70,7 @@ class ParallelismToolsRegistrar(
                 }
                 if (result.criticalPath.isNotEmpty()) {
                     appendLine("\nCritical Path Sample:")
-                    result.criticalPath.take(10).forEach { appendLine("- ${it.taskPath}") }
+                    result.criticalPath.take(CRITICAL_PATH_SAMPLE_LIMIT).forEach { appendLine("- ${it.taskPath}") }
                 }
             }
             CallToolResult(content = listOf(TextContent(text = text.trimEnd())))
