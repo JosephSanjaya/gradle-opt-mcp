@@ -72,5 +72,8 @@ include(
     ":features:runner",
     ":features:runner:api",
     ":features:runner:impl",
+    ":features:test-summary",
+    ":features:test-summary:api",
+    ":features:test-summary:impl",
     ":server"
 )

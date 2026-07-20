@@ -35,6 +35,8 @@ dependencies {
     runtimeOnly(project(":features:health:impl"))
     implementation(project(":features:runner"))
     runtimeOnly(project(":features:runner:impl"))
+    implementation(project(":features:test-summary"))
+    runtimeOnly(project(":features:test-summary:impl"))
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)
