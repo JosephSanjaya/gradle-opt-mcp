@@ -75,5 +75,8 @@ include(
     ":features:test-summary",
     ":features:test-summary:api",
     ":features:test-summary:impl",
+    ":features:dependency-graph",
+    ":features:dependency-graph:api",
+    ":features:dependency-graph:impl",
     ":server"
 )
