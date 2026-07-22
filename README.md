@@ -109,8 +109,6 @@ Restart your MCP client, then ask Claude something like "check this project's Gr
 | Lint & auto-format | `./gradlew detekt` |
 | Run all tests | `./gradlew test` |
 
-See [AGENTS.md](./AGENTS.md) for module structure, DI wiring, and the full coding conventions this project enforces.
-
 ## Releases
 This project is trunk-based: `main` is always releasable, there are no long-lived branches. Every push to `main` and every PR runs CI (`detekt` + `test`, plus a Conventional Commits check on PRs).
 
