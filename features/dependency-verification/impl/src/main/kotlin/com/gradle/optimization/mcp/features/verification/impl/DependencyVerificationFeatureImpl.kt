@@ -6,36 +6,72 @@ import com.gradle.optimization.mcp.features.verification.api.DependencyVerificat
 import com.gradle.optimization.mcp.features.verification.api.TrustedArtifact
 import com.gradle.optimization.mcp.features.verification.api.VerificationComponent
 import java.io.File
+import java.io.IOException
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.ParserConfigurationException
 import org.koin.core.annotation.Single
 import org.w3c.dom.Element
+import org.xml.sax.SAXException
 
 @Single
 class DependencyVerificationFeatureImpl : DependencyVerificationFeatureApi {
     override fun verifyDependencyMetadata(request: DependencyVerificationRequest): DependencyVerificationResult {
-        val projectDir = File(request.projectDir)
-        require(projectDir.exists() && projectDir.isDirectory) {
-            "Project directory does not exist or is not a directory: ${request.projectDir}"
-        }
-
-        val verificationFile = File(projectDir, "gradle/verification-metadata.xml")
-        if (!verificationFile.exists()) {
+        require(request.projectDir.isNotBlank()) { "projectDir is required" }
+        val projectDir = File(request.projectDir).canonicalFile
+        if (!projectDir.isDirectory) {
             return DependencyVerificationResult(
                 projectDir = request.projectDir,
+                status = DependencyVerificationResult.STATUS_PROJECT_DIR_INVALID,
                 verificationFileFound = false,
-                summary = "No gradle/verification-metadata.xml found in project directory. " +
-                    "Dependency verification is not configured."
+                failureReason = "Project directory does not exist or is not a directory: ${request.projectDir}",
+                summary = "Invalid projectDir: ${request.projectDir}"
             )
         }
 
-        return parseVerificationMetadata(projectDir, verificationFile)
+        if (!looksLikeGradleProject(projectDir)) {
+            return DependencyVerificationResult(
+                projectDir = projectDir.path,
+                status = DependencyVerificationResult.STATUS_NOT_A_GRADLE_PROJECT,
+                verificationFileFound = false,
+                failureReason = "Not a Gradle project (missing settings/build script or wrapper): ${projectDir.path}",
+                summary = "Not a Gradle project at ${projectDir.path}"
+            )
+        }
+
+        val verificationFile = File(projectDir, "gradle/verification-metadata.xml")
+        if (!verificationFile.isFile) {
+            return DependencyVerificationResult(
+                projectDir = projectDir.path,
+                status = DependencyVerificationResult.STATUS_VERIFICATION_NOT_CONFIGURED,
+                verificationFileFound = false,
+                guidance = GUIDANCE_NOT_CONFIGURED,
+                summary = buildString {
+                    append("Status: ${DependencyVerificationResult.STATUS_VERIFICATION_NOT_CONFIGURED}. ")
+                    append("No gradle/verification-metadata.xml at ${projectDir.path}. ")
+                    append(GUIDANCE_NOT_CONFIGURED)
+                }
+            )
+        }
+
+        return parseVerificationMetadata(projectDir, verificationFile, request)
     }
 
-    private fun parseVerificationMetadata(projectDir: File, verificationFile: File): DependencyVerificationResult {
-        val dbFactory = DocumentBuilderFactory.newInstance()
-        val dBuilder = dbFactory.newDocumentBuilder()
-        val doc = dBuilder.parse(verificationFile)
-        doc.documentElement.normalize()
+    private fun parseVerificationMetadata(
+        projectDir: File,
+        verificationFile: File,
+        request: DependencyVerificationRequest
+    ): DependencyVerificationResult {
+        val doc = try {
+            val dbFactory = DocumentBuilderFactory.newInstance()
+            val dBuilder = dbFactory.newDocumentBuilder()
+            dBuilder.parse(verificationFile).also { it.documentElement.normalize() }
+        } catch (error: SAXException) {
+            return invalidXmlResult(projectDir, verificationFile, error)
+        } catch (error: IOException) {
+            return invalidXmlResult(projectDir, verificationFile, error)
+        } catch (error: ParserConfigurationException) {
+            return invalidXmlResult(projectDir, verificationFile, error)
+        }
 
         val root = doc.documentElement
         var verifyMetadata = true
@@ -54,29 +90,25 @@ class DependencyVerificationFeatureImpl : DependencyVerificationFeatureApi {
             }
         }
 
-        val trustedArtifacts = mutableListOf<TrustedArtifact>()
+        val allTrusted = mutableListOf<TrustedArtifact>()
         val trustedNodes = root.getElementsByTagName("trusted-artifact")
         for (i in 0 until trustedNodes.length) {
             val elem = trustedNodes.item(i) as Element
             val group = elem.getAttribute("group")
-            val name = elem.getAttribute("name").ifEmpty { null }
-            val version = elem.getAttribute("version").ifEmpty { null }
-            val fileName = elem.getAttribute("file").ifEmpty { null }
-            val reason = elem.getAttribute("reason").ifEmpty { null }
-            if (group.isNotEmpty()) {
-                trustedArtifacts.add(
-                    TrustedArtifact(
-                        group = group,
-                        name = name,
-                        version = version,
-                        fileName = fileName,
-                        reason = reason
-                    )
+            if (group.isEmpty()) continue
+            allTrusted.add(
+                TrustedArtifact(
+                    group = group,
+                    name = elem.getAttribute("name").ifEmpty { null },
+                    version = elem.getAttribute("version").ifEmpty { null },
+                    fileName = elem.getAttribute("file").ifEmpty { null },
+                    reason = elem.getAttribute("reason").ifEmpty { null }
                 )
-            }
+            )
         }
 
-        val components = mutableListOf<VerificationComponent>()
+        val missingChecksumComponents = mutableListOf<VerificationComponent>()
+        var totalComponents = 0
         var missingChecksumCount = 0
 
         val componentNodes = root.getElementsByTagName("component")
@@ -104,42 +136,99 @@ class DependencyVerificationFeatureImpl : DependencyVerificationFeatureApi {
                 }
             }
 
+            totalComponents++
             if (hasMissingChecksum) {
                 missingChecksumCount++
+                if (missingChecksumComponents.size < request.maxMissingChecksumComponents) {
+                    missingChecksumComponents.add(
+                        VerificationComponent(
+                            group = group,
+                            name = name,
+                            version = version,
+                            checksumCount = checksumCount,
+                            hasMissingChecksums = true
+                        )
+                    )
+                }
             }
-
-            components.add(
-                VerificationComponent(
-                    group = group,
-                    name = name,
-                    version = version,
-                    checksumCount = checksumCount,
-                    hasMissingChecksums = hasMissingChecksum
-                )
-            )
         }
 
+        val maxTrusted = request.maxTrustedArtifacts.coerceAtLeast(0)
+        val trustedArtifacts = allTrusted.take(maxTrusted)
+        val truncated =
+            missingChecksumComponents.size < missingChecksumCount ||
+                trustedArtifacts.size < allTrusted.size
+
         val summary = buildString {
-            append("Dependency Verification Metadata Audit:\n")
+            append("Dependency Verification Metadata Audit (static XML only):\n")
+            append("- Status: ${DependencyVerificationResult.STATUS_OK}\n")
+            append("- Project: ${projectDir.path}\n")
             append("- Verification file: ${verificationFile.relativeTo(projectDir).path}\n")
             append("- Verify Metadata: $verifyMetadata | Verify Signatures: $verifySignatures\n")
-            append("- Total Components: ${components.size}\n")
-            append("- Components with Missing Checksums: $missingChecksumCount\n")
-            append("- Trusted Artifact Overrides: ${trustedArtifacts.size}\n")
+            append("- Total Components: $totalComponents\n")
+            append("- Components with Missing Checksums: $missingChecksumCount")
+            if (missingChecksumComponents.size < missingChecksumCount) {
+                append(" (showing ${missingChecksumComponents.size})")
+            }
+            append('\n')
+            append("- Trusted Artifact Overrides: ${allTrusted.size}")
+            if (trustedArtifacts.size < allTrusted.size) {
+                append(" (showing ${trustedArtifacts.size})")
+            }
+            append('\n')
+            if (truncated) {
+                append("- Truncated: true\n")
+            }
         }
 
         return DependencyVerificationResult(
-            projectDir = projectDir.absolutePath,
+            projectDir = projectDir.path,
+            status = DependencyVerificationResult.STATUS_OK,
             verificationFileFound = true,
             verificationFilePath = verificationFile.absolutePath,
             verifyMetadata = verifyMetadata,
             verifySignatures = verifySignatures,
-            totalComponents = components.size,
+            totalComponents = totalComponents,
             componentsWithMissingChecksums = missingChecksumCount,
-            trustedArtifactsCount = trustedArtifacts.size,
-            components = components,
+            trustedArtifactsCount = allTrusted.size,
+            components = missingChecksumComponents,
             trustedArtifacts = trustedArtifacts,
+            truncated = truncated,
             summary = summary
         )
+    }
+
+    private fun invalidXmlResult(
+        projectDir: File,
+        verificationFile: File,
+        error: Throwable
+    ): DependencyVerificationResult {
+        val reason = error.message?.takeIf { it.isNotBlank() } ?: error.toString()
+        return DependencyVerificationResult(
+            projectDir = projectDir.path,
+            status = DependencyVerificationResult.STATUS_INVALID_XML,
+            verificationFileFound = true,
+            verificationFilePath = verificationFile.absolutePath,
+            failureReason = reason,
+            summary = buildString {
+                append("Status: ${DependencyVerificationResult.STATUS_INVALID_XML}. ")
+                append("Failed to parse ${verificationFile.path}. ")
+                append("Reason: ${reason.lineSequence().first()}")
+            }
+        )
+    }
+
+    private fun looksLikeGradleProject(projectDir: File): Boolean =
+        File(projectDir, "settings.gradle.kts").isFile ||
+            File(projectDir, "settings.gradle").isFile ||
+            File(projectDir, "build.gradle.kts").isFile ||
+            File(projectDir, "build.gradle").isFile ||
+            File(projectDir, "gradle/wrapper/gradle-wrapper.properties").isFile
+
+    private companion object {
+        const val GUIDANCE_NOT_CONFIGURED =
+            "Enable Gradle dependency verification, then generate metadata with " +
+                "./gradlew --write-verification-metadata sha256 help " +
+                "(or sha256,pgp). Re-run verify_dependency_metadata after the file exists."
     }
 }
