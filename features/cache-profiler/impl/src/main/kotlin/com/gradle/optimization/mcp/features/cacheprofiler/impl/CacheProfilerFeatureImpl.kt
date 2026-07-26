@@ -141,7 +141,6 @@ class CacheProfilerFeatureImpl : CacheProfilerFeatureApi {
                 root.walkTopDown()
                     .onEnter { dir -> !isNoiseDir(dir) }
                     .filter { it.isFile && it.name == REPORT_FILE_NAME }
-                    .filter { !isNoisePath(it) }
                     .toList()
             }
             .distinctBy { it.absolutePath }
@@ -153,14 +152,6 @@ class CacheProfilerFeatureImpl : CacheProfilerFeatureApi {
             name.endsWith(".tmp") ||
             name.endsWith(".part") ||
             name == "tmp"
-    }
-
-    private fun isNoisePath(file: File): Boolean {
-        val path = file.path
-        return path.contains("${File.separator}.tmp${File.separator}") ||
-            path.contains("${File.separator}tmp${File.separator}") ||
-            file.name.endsWith(".lock") ||
-            file.name.endsWith(".tmp")
     }
 
     private fun reportEntryId(file: File): String {

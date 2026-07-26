@@ -5,10 +5,14 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   commitlint:
