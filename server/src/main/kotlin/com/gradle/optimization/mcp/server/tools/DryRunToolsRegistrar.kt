@@ -1,7 +1,9 @@
 package com.gradle.optimization.mcp.server.tools
 
+import com.gradle.optimization.mcp.features.dryrun.api.DryRunCount
 import com.gradle.optimization.mcp.features.dryrun.api.DryRunFeatureApi
 import com.gradle.optimization.mcp.features.dryrun.api.DryRunRequest
+import com.gradle.optimization.mcp.features.dryrun.api.DryRunResult
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -14,6 +16,8 @@ import kotlinx.serialization.json.put
 import org.koin.core.annotation.Provided
 import org.koin.core.annotation.Single
 
+private const val GROUP_DISPLAY_LIMIT = 15
+
 @Single
 class DryRunToolsRegistrar(
     @Provided private val dryRunApi: DryRunFeatureApi
@@ -21,7 +25,9 @@ class DryRunToolsRegistrar(
     override fun register(server: Server) {
         server.addTool(
             name = "analyze_build_dry_run",
-            description = "Execute a Gradle dry-run build (--dry-run) and analyze planned task execution sequence.",
+            description = "Analyze the Gradle task execution graph with --dry-run (no compilers/tests). " +
+                "Returns taskCount, module/leaf-type groupings, a capped scheduled-task sample, " +
+                "and failureReason on Tooling API errors.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     put("projectDir", buildJsonObject { put("type", "string") })
@@ -43,13 +49,58 @@ class DryRunToolsRegistrar(
                     isError = true
                 )
             val tasks = args["tasks"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
-            val result = dryRunApi.analyzeDryRun(DryRunRequest(projectDir, tasks))
-            val taskList = result.tasksExecuted.joinToString("\n") {
-                "${it.taskPath}${if (it.skipped) " (SKIPPED)" else ""}"
+
+            val result = runCatching {
+                dryRunApi.analyzeDryRun(DryRunRequest(projectDir, tasks))
+            }.getOrElse { error ->
+                return@addTool CallToolResult(
+                    content = listOf(
+                        TextContent(text = "Error: ${error.message ?: error}")
+                    ),
+                    isError = true
+                )
             }
-            val summary = "Dry run completed for project $projectDir.\n" +
-                "Tasks planned: ${result.tasksExecuted.size}\n\n$taskList"
-            CallToolResult(content = listOf(TextContent(text = summary)))
+
+            CallToolResult(
+                content = listOf(TextContent(text = formatResult(result))),
+                isError = !result.success
+            )
+        }
+    }
+
+    private fun formatResult(result: DryRunResult): String = buildString {
+        appendLine("Summary: ${result.summary}")
+        appendLine("Success: ${result.success}")
+        appendLine("Requested Tasks: ${result.requestedTasks.joinToString(", ")}")
+        appendLine("Task Count: ${result.taskCount}")
+
+        appendCountSection("By Module", result.byModule)
+        appendCountSection("By Leaf Type", result.byLeafType)
+
+        if (result.sampleTasks.isNotEmpty()) {
+            appendLine()
+            appendLine("Sample Tasks (${result.sampleTasks.size}/${result.taskCount}):")
+            result.sampleTasks.forEach { task ->
+                appendLine("  ${task.taskPath} [${task.status}]")
+            }
+        }
+
+        if (!result.failureReason.isNullOrBlank()) {
+            appendLine()
+            appendLine("Failure Reason:")
+            result.failureReason!!.lines().forEach { appendLine("  $it") }
+        }
+    }.trimEnd()
+
+    private fun StringBuilder.appendCountSection(title: String, counts: List<DryRunCount>) {
+        if (counts.isEmpty()) return
+        appendLine()
+        val shown = counts.take(GROUP_DISPLAY_LIMIT)
+        val omitted = counts.size - shown.size
+        appendLine("$title (${counts.size}):")
+        shown.forEach { appendLine("  ${it.name}: ${it.count}") }
+        if (omitted > 0) {
+            appendLine("  … and $omitted more")
         }
     }
 }
