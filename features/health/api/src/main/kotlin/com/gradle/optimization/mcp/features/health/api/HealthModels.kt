@@ -4,11 +4,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class GradleHealthRequest(
-    val projectDir: String? = null
+    val projectDir: String
 )
 
 @Serializable
 data class GradleHealthResult(
+    val projectDir: String,
     val gradleVersion: String,
     val javaVersion: String,
     val javaVendor: String,
@@ -18,8 +19,12 @@ data class GradleHealthResult(
     val rootProjectName: String,
     val subprojectCount: Int,
     val subprojectNames: List<String>,
+    val subprojectsTruncated: Boolean = false,
     val wrapperVersion: String? = null,
     val buildSrcPresent: Boolean = false,
-    val configurationCacheConfigFile: Boolean = false,
+    val configurationCacheEnabled: Boolean = false,
+    val cachingEnabled: Boolean = false,
+    val parallelEnabled: Boolean = false,
+    val gaps: List<String> = emptyList(),
     val summary: String
 )

@@ -7,6 +7,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.koin.core.annotation.Provided
@@ -21,20 +22,26 @@ class HealthToolsRegistrar(
             name = "gradle_health",
             description = "Perform a system & workspace orientation health check on a Gradle project, " +
                 "returning Gradle/Java environment versions, project structure, wrapper properties, " +
-                "and build configuration details.",
+                "configuration flags, and a gaps block for missing/mismatched setup.",
             inputSchema = ToolSchema(
-                properties = kotlinx.serialization.json.buildJsonObject {
-                    put("projectDir", kotlinx.serialization.json.buildJsonObject { put("type", "string") })
-                }
+                properties = buildJsonObject {
+                    put("projectDir", buildJsonObject { put("type", "string") })
+                },
+                required = listOf("projectDir")
             )
         ) { request ->
             val args = request.params.arguments ?: JsonObject(emptyMap())
             val projectDir = args["projectDir"]?.jsonPrimitive?.content
+                ?: return@addTool CallToolResult(
+                    content = listOf(TextContent(text = "Error: projectDir parameter is required")),
+                    isError = true
+                )
 
             val result = healthApi.checkHealth(GradleHealthRequest(projectDir = projectDir))
 
             val text = buildString {
                 appendLine("Summary: ${result.summary}")
+                appendLine("Project Dir: ${result.projectDir}")
                 appendLine("Root Project: ${result.rootProjectName}")
                 appendLine("Gradle Version: ${result.gradleVersion}")
                 if (result.wrapperVersion != null) {
@@ -47,8 +54,19 @@ class HealthToolsRegistrar(
                 if (result.subprojectNames.isNotEmpty()) {
                     appendLine("Subprojects: ${result.subprojectNames.joinToString(", ")}")
                 }
+                if (result.subprojectsTruncated) {
+                    appendLine("Subprojects Truncated: true (showing first ${result.subprojectNames.size})")
+                }
                 appendLine("buildSrc Present: ${result.buildSrcPresent}")
-                appendLine("Configuration Cache Configured: ${result.configurationCacheConfigFile}")
+                appendLine("Configuration Cache Enabled: ${result.configurationCacheEnabled}")
+                appendLine("Build Cache Enabled: ${result.cachingEnabled}")
+                appendLine("Parallel Enabled: ${result.parallelEnabled}")
+                if (result.gaps.isEmpty()) {
+                    appendLine("Gaps: none")
+                } else {
+                    appendLine("Gaps (${result.gaps.size}):")
+                    result.gaps.forEach { appendLine("- $it") }
+                }
             }
 
             CallToolResult(content = listOf(TextContent(text = text.trimEnd())))

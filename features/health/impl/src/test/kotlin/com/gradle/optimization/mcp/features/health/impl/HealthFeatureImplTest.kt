@@ -1,35 +1,69 @@
 package com.gradle.optimization.mcp.features.health.impl
 
-import com.gradle.optimization.mcp.core.api.GradleConfig
 import com.gradle.optimization.mcp.core.api.GradleConnectionPool
 import com.gradle.optimization.mcp.features.health.api.GradleHealthRequest
 import java.io.File
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class HealthFeatureImplTest {
     @Test
-    fun testHealthCheckFallback() {
+    fun testFailsClosedOnToolingFailure() {
         val fakePool = object : GradleConnectionPool {
-            override fun <T> withConnection(projectDir: File, action: (org.gradle.tooling.ProjectConnection) -> T): T {
-                error("Fallback test does not invoke connection")
+            override fun <T> withConnection(
+                projectDir: File,
+                action: (org.gradle.tooling.ProjectConnection) -> T
+            ): T {
+                error("Tooling API unavailable")
             }
         }
-        val tempDir = File.createTempFile("test_gradle_health", "").apply {
-            delete()
-            mkdir()
+        val tempDir = kotlin.io.path.createTempDirectory("test_gradle_health").toFile().apply {
+            File(this, "settings.gradle.kts").writeText("rootProject.name = \"demo\"")
             deleteOnExit()
         }
 
-        val config = GradleConfig(defaultProjectDir = tempDir.absolutePath)
-        val feature = HealthFeatureImpl(fakePool, config)
-        val result = feature.checkHealth(GradleHealthRequest(projectDir = tempDir.absolutePath))
+        val feature = HealthFeatureImpl(fakePool)
+        val ex = assertFailsWith<IllegalStateException> {
+            feature.checkHealth(GradleHealthRequest(projectDir = tempDir.absolutePath))
+        }
+        assertTrue(ex.message!!.contains("Tooling API unavailable"))
+    }
 
-        assertNotNull(result)
-        assertEquals(tempDir.name, result.rootProjectName)
-        assertEquals(0, result.subprojectCount)
-        assertNotNull(result.gradleVersion)
-        assertNotNull(result.javaVersion)
+    @Test
+    fun testFailsClosedOnNonGradleDirectory() {
+        val fakePool = object : GradleConnectionPool {
+            override fun <T> withConnection(
+                projectDir: File,
+                action: (org.gradle.tooling.ProjectConnection) -> T
+            ): T {
+                error("should not connect")
+            }
+        }
+        val tempDir = kotlin.io.path.createTempDirectory("test_gradle_health_empty").toFile().apply {
+            deleteOnExit()
+        }
+
+        val feature = HealthFeatureImpl(fakePool)
+        val ex = assertFailsWith<IllegalArgumentException> {
+            feature.checkHealth(GradleHealthRequest(projectDir = tempDir.absolutePath))
+        }
+        assertTrue(ex.message!!.contains("Not a Gradle project"))
+    }
+
+    @Test
+    fun testRequiresProjectDir() {
+        val fakePool = object : GradleConnectionPool {
+            override fun <T> withConnection(
+                projectDir: File,
+                action: (org.gradle.tooling.ProjectConnection) -> T
+            ): T {
+                error("should not connect")
+            }
+        }
+        val feature = HealthFeatureImpl(fakePool)
+        assertFailsWith<IllegalArgumentException> {
+            feature.checkHealth(GradleHealthRequest(projectDir = "   "))
+        }
     }
 }
