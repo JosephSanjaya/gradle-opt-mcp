@@ -4,7 +4,9 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class JUnitXmlParserTest {
     @Test
@@ -50,9 +52,30 @@ class JUnitXmlParserTest {
             assertEquals("testTwo", failed.testName)
             assertEquals("Assertion failed", failed.failureMessage)
             assertEquals("java.lang.AssertionError", failed.failureType)
+            assertTrue(failed.stackTraceSnippet!!.contains("SampleTest.kt:20"))
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun testStackSnippetPrefersAppFrames() {
+        val stack = """
+            org.opentest4j.AssertionFailedError: expected: <1> but was: <2>
+            	at org.junit.jupiter.api.AssertionUtils.fail(AssertionUtils.java:55)
+            	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:199)
+            	at jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+            	at java.lang.reflect.Method.invoke(Method.java:580)
+            	at com.example.EvalFailureProbe.failsOnPurpose(EvalFailureProbe.kt:18)
+            	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+        """.trimIndent()
+
+        val snippet = JUnitXmlParser.buildStackSnippet(stack)
+        assertTrue(snippet.contains("EvalFailureProbe.kt:18"), "snippet=$snippet")
+        assertFalse(snippet.contains("org.junit.jupiter"), "snippet=$snippet")
+        assertFalse(snippet.contains("jdk.internal"), "snippet=$snippet")
+        assertFalse(snippet.contains("java.lang.reflect"), "snippet=$snippet")
+        assertTrue(snippet.contains("AssertionFailedError"), "snippet=$snippet")
     }
 
     @Test

@@ -103,7 +103,7 @@ internal object JUnitXmlParser {
             failureMsg = failElem.getAttribute("message").ifEmpty { failElem.textContent?.trim() }
             failureType = failElem.getAttribute("type").ifEmpty { failElem.tagName }
             val fullText = failElem.textContent?.trim() ?: ""
-            snippet = fullText.lines().take(MAX_SNIPPET_LINES).joinToString("\n")
+            snippet = buildStackSnippet(fullText)
         } else if (skippedNodes.length > 0 || ignoredNodes.length > 0) {
             status = "SKIPPED"
         }
@@ -136,5 +136,41 @@ internal object JUnitXmlParser {
         return if (rawModule.isEmpty()) ":" else ":" + rawModule.replace('/', ':')
     }
 
-    private const val MAX_SNIPPET_LINES = 6
+    internal fun buildStackSnippet(fullText: String): String {
+        val lines = fullText.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) return ""
+
+        val header = mutableListOf<String>()
+        val frames = mutableListOf<String>()
+        for (line in lines) {
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("at ")) {
+                frames.add(trimmed)
+            } else if (frames.isEmpty()) {
+                header.add(line.trim())
+            }
+        }
+
+        val appFrames = frames.filterNot { isNoiseFrame(it) }
+        val selectedFrames = (if (appFrames.isNotEmpty()) appFrames else frames).take(MAX_APP_FRAMES)
+        val selectedHeader = header.take(MAX_HEADER_LINES)
+        return (selectedHeader + selectedFrames).joinToString("\n")
+    }
+
+    private fun isNoiseFrame(frame: String): Boolean {
+        val target = frame.removePrefix("at ").trim()
+        return NOISE_PREFIXES.any { target.startsWith(it) }
+    }
+
+    private val NOISE_PREFIXES = listOf(
+        "org.junit.",
+        "junit.framework.",
+        "jdk.internal.",
+        "java.lang.reflect.",
+        "sun.reflect.",
+        "org.opentest4j."
+    )
+
+    private const val MAX_HEADER_LINES = 2
+    private const val MAX_APP_FRAMES = 6
 }
