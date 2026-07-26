@@ -12,7 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 
-internal data class ParsedConfigurationCacheReport(
+data class ParsedConfigurationCacheReport(
     val cacheAction: String?,
     val cacheActionDescription: String?,
     val requestedTasks: List<String>,
@@ -22,7 +22,7 @@ internal data class ParsedConfigurationCacheReport(
     val inputCounts: List<ConfigCacheInputTypeCount>
 )
 
-internal object ConfigurationCacheReportParser {
+object ConfigurationCacheReportParser {
     private val json = Json { ignoreUnknownKeys = true }
     private val reportJsonRegex = Regex("""\{"diagnostics"\s*:""")
     private const val REPORT_MTIME_SKEW_MS = 2_000L
