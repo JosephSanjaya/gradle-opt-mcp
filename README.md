@@ -29,12 +29,12 @@ Diagnosing a slow or broken Gradle build usually means running a command, copyin
 | `check_project_isolation_violations` | Flags cross-project state access that breaks Project Isolation |
 | `get_dependency_insight` | Explains why a dependency resolved to a given version |
 | `audit_configuration_cache_inputs` | Audits what invalidates the configuration cache |
-| `verify_dependency_metadata` | Verifies dependency metadata/signatures |
+| `verify_dependency_metadata` | Static audit of verification-metadata.xml (checksums / trusted overrides) |
 | `lint_gradle_plugins` | Lints applied Gradle plugins for known issues |
 | `analyze_build_scan` | Analyzes a Gradle Build Scan |
 | `inspect_declarative_schemas` | Inspects declarative Gradle DSL schemas |
 | `profile_cache_invalidation_timeline` | Profiles build/configuration cache invalidation over time |
-| `analyze_parallelization_bottlenecks` | Finds tasks blocking parallel execution |
+| `analyze_parallelization_bottlenecks` | Dry-run parallelism heuristics (histograms + capped candidates) |
 | `gradle_health` | Reports project health (modules, versions, structure) |
 | `gradle_run` / `gradle_run_log` | Runs a Gradle task and retrieves its log |
 | `gradle_test_summary` | Summarizes test results for a run |
