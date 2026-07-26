@@ -2,6 +2,7 @@ package com.gradle.optimization.mcp.server.tools
 
 import com.gradle.optimization.mcp.features.buildscan.api.BuildScanFeatureApi
 import com.gradle.optimization.mcp.features.buildscan.api.BuildScanRequest
+import com.gradle.optimization.mcp.features.buildscan.api.BuildScanResult
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -9,6 +10,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import org.koin.core.annotation.Provided
 import org.koin.core.annotation.Single
@@ -22,12 +24,43 @@ class BuildScanToolsRegistrar(
     override fun register(server: Server) {
         server.addTool(
             name = "analyze_build_scan",
-            description = "Analyze build scan execution telemetry, cache hit/miss ratio, and GC pauses.",
+            description = "Parse a local plain-text Gradle task-outcome dump for cache hit/miss " +
+                "ratio, longest timed tasks, and GC pauses. Requires projectDir. " +
+                "Provide dumpFilePath to a supported dump (task lines like " +
+                "`:module:task FROM-CACHE 120ms`; optional `GC pause: Nms`). " +
+                "Fails closed with NO_DATA when no dump is provided. " +
+                "Does not run Gradle and does not fetch remote build scans.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
-                    put("projectDir", buildJsonObject { put("type", "string") })
-                    put("buildScanUrl", buildJsonObject { put("type", "string") })
-                    put("dumpFilePath", buildJsonObject { put("type", "string") })
+                    put(
+                        "projectDir",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("description", "Absolute path to the Gradle project root")
+                        }
+                    )
+                    put(
+                        "dumpFilePath",
+                        buildJsonObject {
+                            put("type", "string")
+                            put(
+                                "description",
+                                "Absolute path to a local plain-text task-outcome dump " +
+                                    "(required for analysis; missing/unreadable → error)"
+                            )
+                        }
+                    )
+                    put(
+                        "maxListedTasks",
+                        buildJsonObject {
+                            put("type", "integer")
+                            put(
+                                "description",
+                                "Cap for longest-running and cache-miss task lists " +
+                                    "(default ${BuildScanRequest.DEFAULT_MAX_LISTED_TASKS})"
+                            )
+                        }
+                    )
                 },
                 required = listOf("projectDir")
             )
@@ -38,47 +71,99 @@ class BuildScanToolsRegistrar(
                     content = listOf(TextContent(text = "Error: projectDir parameter is required")),
                     isError = true
                 )
+            // Not advertised in schema; if a client still sends it, fail closed (unsupported).
             val buildScanUrl = args["buildScanUrl"]?.let { (it as? JsonPrimitive)?.content }
             val dumpFilePath = args["dumpFilePath"]?.let { (it as? JsonPrimitive)?.content }
+            val maxListedTasks = args["maxListedTasks"]?.let { (it as? JsonPrimitive)?.intOrNull }
+                ?: BuildScanRequest.DEFAULT_MAX_LISTED_TASKS
 
             val result = buildScanApi.analyzeBuildScan(
                 BuildScanRequest(
                     projectDir = projectDir,
                     buildScanUrl = buildScanUrl,
-                    dumpFilePath = dumpFilePath
+                    dumpFilePath = dumpFilePath,
+                    maxListedTasks = maxListedTasks
                 )
             )
 
-            val cachePct = result.cacheHitRatio * PERCENTAGE_MULTIPLIER
-            val longRunningStr = if (result.longRunningTasks.isEmpty()) {
-                " None"
-            } else {
-                "\n" + result.longRunningTasks.joinToString("\n") {
-                    " - ${it.taskPath} (${it.durationMs}ms, ${it.outcome})"
-                }
-            }
-
-            val missesStr = if (result.tasksWithCacheMisses.isEmpty()) {
-                " None"
-            } else {
-                "\n" + result.tasksWithCacheMisses.joinToString("\n") {
-                    " - ${it.taskPath} (${it.outcome})"
-                }
-            }
-
-            val recsStr = "\n" + result.recommendations.joinToString("\n") { " - $it" }
-
-            val summary = "Build scan telemetry analysis for $projectDir:\n\n" +
-                "### Summary Metrics\n" +
-                "- Total Tasks Analyzed: ${result.totalTasksCount}\n" +
-                "- Cache Hit Ratio: ${"%.2f".format(cachePct)}% " +
-                "(${result.cacheHitCount} hits, ${result.cacheMissCount} misses)\n" +
-                "- GC Pause Duration: ${result.gcPauseMs} ms\n\n" +
-                "### Longest Running Tasks:$longRunningStr\n\n" +
-                "### Tasks with Cache Misses:$missesStr\n\n" +
-                "### Actionable Optimization Advice:$recsStr"
-
-            CallToolResult(content = listOf(TextContent(text = summary)))
+            CallToolResult(
+                content = listOf(TextContent(text = formatResult(result))),
+                isError = result.status != BuildScanResult.STATUS_OK
+            )
         }
     }
+
+    private fun formatResult(result: BuildScanResult): String = buildString {
+        appendLine("Build scan dump analysis for ${result.projectDir}")
+        appendLine("Status: ${result.status}")
+        val failureReason = result.failureReason
+        if (failureReason != null) {
+            appendLine("Failure Reason: $failureReason")
+        }
+        val guidance = result.guidance
+        if (guidance != null) {
+            appendLine("Guidance: $guidance")
+        }
+        val dumpFormatHint = result.dumpFormatHint
+        if (dumpFormatHint != null && result.status != BuildScanResult.STATUS_OK) {
+            appendLine("Dump Format: $dumpFormatHint")
+        }
+
+        if (result.status != BuildScanResult.STATUS_OK) {
+            return@buildString
+        }
+
+        appendLine()
+        appendLine("### Summary Metrics")
+        appendLine("- Total Tasks Analyzed: ${result.totalTasksCount}")
+        val ratio = result.cacheHitRatio
+        if (ratio != null) {
+            val cachePct = ratio * PERCENTAGE_MULTIPLIER
+            appendLine(
+                "- Cache Hit Ratio: ${"%.2f".format(cachePct)}% " +
+                    "(${result.cacheHitCount} hits, ${result.cacheMissCount} misses)"
+            )
+        }
+        val gcPauseMs = result.gcPauseMs
+        if (gcPauseMs != null) {
+            appendLine("- GC Pause Duration: $gcPauseMs ms")
+        } else {
+            appendLine("- GC Pause Duration: (not present in dump)")
+        }
+        if (result.truncated) {
+            appendLine("- Lists Truncated: true")
+        }
+
+        appendLine()
+        append("### Longest Running Tasks (timed only):")
+        if (result.longRunningTasks.isEmpty()) {
+            appendLine(" none with parseable duration")
+        } else {
+            appendLine()
+            result.longRunningTasks.forEach { task ->
+                val dur = task.durationMs?.let { "${it}ms" } ?: "unknown"
+                appendLine(" - ${task.taskPath} ($dur, ${task.outcome})")
+            }
+        }
+
+        appendLine()
+        append("### Tasks with Cache Misses:")
+        if (result.tasksWithCacheMisses.isEmpty()) {
+            appendLine(" none")
+        } else {
+            appendLine()
+            result.tasksWithCacheMisses.forEach { task ->
+                appendLine(" - ${task.taskPath} (${task.outcome})")
+            }
+        }
+
+        appendLine()
+        append("### Actionable Optimization Advice:")
+        if (result.recommendations.isEmpty()) {
+            appendLine(" none from available dump metrics")
+        } else {
+            appendLine()
+            result.recommendations.forEach { appendLine(" - $it") }
+        }
+    }.trimEnd()
 }
