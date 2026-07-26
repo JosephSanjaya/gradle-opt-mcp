@@ -3,7 +3,6 @@ package com.gradle.optimization.mcp.features.configcache.impl
 import com.gradle.optimization.mcp.core.api.GradleConnectionPool
 import com.gradle.optimization.mcp.features.configcache.api.ConfigCacheAuditRequest
 import com.gradle.optimization.mcp.features.configcache.api.ConfigCacheAuditResult
-import com.gradle.optimization.mcp.features.configcache.api.ConfigCacheInputViolation
 import com.gradle.optimization.mcp.features.configcache.api.ConfigurationCacheFeatureApi
 import org.koin.core.annotation.Provided
 import org.koin.core.annotation.Single
@@ -18,118 +17,126 @@ class ConfigurationCacheFeatureImpl(
         val targetDir = File(request.projectDir)
         require(targetDir.exists()) { "Target directory does not exist: ${request.projectDir}" }
 
+        val taskList = request.tasks.ifEmpty { listOf("help") }
         val stdout = ByteArrayOutputStream()
         val stderr = ByteArrayOutputStream()
+        val startedAtMs = System.currentTimeMillis()
+        var failureReason: String? = null
 
-        runCatching {
+        val success = runCatching {
             pool.withConnection(targetDir) { connection ->
                 val launcher = connection.newBuild()
-                val tasksToRun = request.tasks.ifEmpty { listOf("help") }
-                launcher.forTasks(*tasksToRun.toTypedArray())
-                launcher.withArguments(
-                    "-Dorg.gradle.configuration-cache=true",
-                    "--console=plain"
-                )
-                launcher.setStandardOutput(stdout)
-                launcher.setStandardError(stderr)
+                    .forTasks(*taskList.toTypedArray())
+                    .withArguments(
+                        "-Dorg.gradle.configuration-cache=true",
+                        "--console=plain"
+                    )
+                    .setStandardOutput(stdout)
+                    .setStandardError(stderr)
                 launcher.run()
+            }
+            true
+        }.getOrElse { error ->
+            failureReason = error.message?.takeIf { it.isNotBlank() } ?: error.toString()
+            false
+        }
+
+        val rawOutput = buildString {
+            append(stdout.toString(Charsets.UTF_8))
+            append('\n')
+            append(stderr.toString(Charsets.UTF_8))
+            if (!failureReason.isNullOrBlank() && !contains(failureReason!!)) {
+                append('\n')
+                append(failureReason)
             }
         }
 
-        val rawOutput = stdout.toString(Charsets.UTF_8) + "\n" + stderr.toString(Charsets.UTF_8)
-        val cacheHit = rawOutput.contains("Configuration cache entry reused", ignoreCase = true)
-        val violations = parseInputViolations(rawOutput)
-        val reportPath = findHtmlReport(targetDir)
+        val consoleCacheHit = rawOutput.contains("Configuration cache entry reused", ignoreCase = true) ||
+            rawOutput.contains("Reusing configuration cache", ignoreCase = true)
 
-        val summary = when {
-            cacheHit -> "Configuration cache hit. Entry reused successfully."
-            violations.isNotEmpty() ->
-                "Found ${violations.size} configuration input violation(s) invalidating configuration cache."
-            else -> "Configuration cache calculated with no detected input violations."
-        }
+        val reportFromOutput = ConfigurationCacheReportParser.extractReportPathFromOutput(rawOutput)
+            ?.let { File(it) }
+            ?.takeIf { it.exists() }
+        val reportFile = reportFromOutput
+            ?: ConfigurationCacheReportParser.findNewestReport(targetDir, startedAtMs)
+
+        val parsed = reportFile
+            ?.takeIf { it.exists() }
+            ?.let { ConfigurationCacheReportParser.parseReportHtml(it.readText()) }
+
+        val cacheAction = parsed?.cacheAction
+            ?: when {
+                consoleCacheHit -> "reused"
+                rawOutput.contains("Configuration cache entry stored", ignoreCase = true) -> "stored"
+                else -> null
+            }
+        val cacheHit = consoleCacheHit || cacheAction.equals("reused", ignoreCase = true)
+
+        val notableInputs = ConfigurationCacheReportParser.selectNotableInputs(
+            inputs = parsed?.inputs.orEmpty(),
+            maxNotable = request.maxNotableInputs
+        )
+        val problems = parsed?.problems.orEmpty()
+        val totalProblemCount = parsed?.totalProblemCount ?: 0
+        val requestedFromReport = parsed?.requestedTasks.orEmpty()
+        val effectiveRequested = requestedFromReport.ifEmpty { taskList }
+
+        val summary = buildSummary(
+            success = success,
+            cacheHit = cacheHit,
+            cacheAction = cacheAction,
+            totalInputs = parsed?.inputs?.size ?: 0,
+            notableCount = notableInputs.size,
+            totalProblemCount = totalProblemCount,
+            failureReason = failureReason
+        )
 
         return ConfigCacheAuditResult(
             projectDir = request.projectDir,
+            success = success && totalProblemCount == 0,
             cacheHit = cacheHit,
-            inputsAudited = violations,
-            htmlReportPath = reportPath,
+            cacheAction = cacheAction,
+            requestedTasks = effectiveRequested,
+            totalInputs = parsed?.inputs?.size ?: 0,
+            inputCounts = parsed?.inputCounts.orEmpty(),
+            notableInputs = notableInputs,
+            totalProblemCount = totalProblemCount,
+            problems = problems,
+            htmlReportPath = reportFile?.absolutePath,
+            failureReason = failureReason,
             summary = summary
         )
     }
 
-    internal fun parseInputViolations(output: String): List<ConfigCacheInputViolation> {
-        val violations = mutableListOf<ConfigCacheInputViolation>()
-
-        output.lineSequence().forEach { line ->
-            val isEnv = line.contains("System.getenv", ignoreCase = true) ||
-                line.contains("environment variable", ignoreCase = true)
-            val isProp = line.contains("System.getProperty", ignoreCase = true) ||
-                line.contains("system property", ignoreCase = true)
-            val isList = line.contains("listFiles", ignoreCase = true) ||
-                line.contains("directory content", ignoreCase = true)
-            val isRead = line.contains("readText", ignoreCase = true) ||
-                line.contains("file content", ignoreCase = true)
-
-            when {
-                isEnv -> {
-                    violations.add(
-                        ConfigCacheInputViolation(
-                            inputName = line.trim(),
-                            inputType = "ENVIRONMENT_VARIABLE",
-                            antiPattern = "Direct System.getenv() access",
-                            recommendedRefactoring = "providers.environmentVariable(\"KEY\")"
-                        )
-                    )
-                }
-                isProp -> {
-                    violations.add(
-                        ConfigCacheInputViolation(
-                            inputName = line.trim(),
-                            inputType = "SYSTEM_PROPERTY",
-                            antiPattern = "Direct System.getProperty() access",
-                            recommendedRefactoring = "providers.systemProperty(\"prop\")"
-                        )
-                    )
-                }
-                isList -> {
-                    violations.add(
-                        ConfigCacheInputViolation(
-                            inputName = line.trim(),
-                            inputType = "DIRECTORY_LISTING",
-                            antiPattern = "File.listFiles() or directory listing",
-                            recommendedRefactoring = "ObjectFactory.fileCollection()"
-                        )
-                    )
-                }
-                isRead -> {
-                    violations.add(
-                        ConfigCacheInputViolation(
-                            inputName = line.trim(),
-                            inputType = "FILE_READ",
-                            antiPattern = "Direct File.readText() access",
-                            recommendedRefactoring = "providers.fileContents(...)"
-                        )
-                    )
+    private fun buildSummary(
+        success: Boolean,
+        cacheHit: Boolean,
+        cacheAction: String?,
+        totalInputs: Int,
+        notableCount: Int,
+        totalProblemCount: Int,
+        failureReason: String?
+    ): String = buildString {
+        when {
+            !success -> {
+                append("Configuration cache audit build failed.")
+                if (!failureReason.isNullOrBlank()) {
+                    append(" Reason: ${failureReason.lineSequence().first()}")
                 }
             }
-        }
-
-        return violations.distinctBy { it.inputName }
-    }
-
-    private fun findHtmlReport(projectDir: File): String? {
-        val possibleReportDirs = listOf(
-            File(projectDir, "build/reports/configuration-cache"),
-            File(projectDir, ".gradle/configuration-cache")
-        )
-        for (dir in possibleReportDirs) {
-            if (dir.exists() && dir.isDirectory) {
-                val reportFile = dir.walkTopDown().firstOrNull { it.name.endsWith(".html") }
-                if (reportFile != null) {
-                    return reportFile.absolutePath
-                }
+            totalProblemCount > 0 -> {
+                append("Configuration cache reported $totalProblemCount problem(s).")
             }
+            cacheHit -> append("Configuration cache hit (entry reused).")
+            cacheAction != null -> append("Configuration cache action: $cacheAction.")
+            else -> append("Configuration cache audit completed.")
         }
-        return null
-    }
+        if (totalInputs > 0) {
+            append(" Tracked $totalInputs configuration input(s)")
+            if (notableCount > 0) {
+                append(", $notableCount notable")
+            }
+            append('.')
+        }
+    }.trim()
 }

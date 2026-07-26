@@ -7,4 +7,5 @@ base.archivesName = "configuration-cache-impl"
 dependencies {
     implementation(project(":features:configuration-cache:api"))
     implementation(project(":core:api"))
+    implementation(libs.kotlinx.serialization.json)
 }
