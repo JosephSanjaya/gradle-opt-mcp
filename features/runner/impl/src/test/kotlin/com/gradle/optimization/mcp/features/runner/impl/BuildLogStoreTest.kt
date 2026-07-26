@@ -76,4 +76,37 @@ class BuildLogStoreTest {
         assertEquals("e: Error in File.kt", result.lines[0])
         assertFalse(result.hasMore)
     }
+
+    @Test
+    fun testReadLogWithFailureFilter() {
+        val tempDir = File.createTempFile("test_build_log_failure_filter", "").apply {
+            delete()
+            mkdir()
+            deleteOnExit()
+        }
+
+        val runId = BuildLogStore.generateRunId()
+        val lines = listOf(
+            "Task :a UP-TO-DATE",
+            "Task :b",
+            "FAILURE: Build failed with an exception.",
+            "* What went wrong:",
+            "Task 'missing' not found",
+            "BUILD FAILED"
+        )
+        BuildLogStore.saveLog(tempDir, runId, lines)
+
+        val result = BuildLogStore.readLog(
+            tempDir,
+            GradleRunLogRequest(
+                projectDir = tempDir.absolutePath,
+                runId = runId,
+                filter = "failure"
+            )
+        )
+
+        assertTrue(result.lines.any { it.contains("What went wrong") })
+        assertTrue(result.lines.any { it.contains("missing") })
+        assertFalse(result.lines.any { it.contains("UP-TO-DATE") })
+    }
 }

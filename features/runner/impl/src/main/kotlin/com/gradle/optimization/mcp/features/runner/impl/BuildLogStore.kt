@@ -66,7 +66,11 @@ object BuildLogStore {
         var lines = logFile.readLines()
         val queryFilter = request.filter
         if (!queryFilter.isNullOrBlank()) {
-            lines = lines.filter { it.contains(queryFilter, ignoreCase = true) }
+            lines = when {
+                queryFilter.equals("failure", ignoreCase = true) ->
+                    SourceErrorExtractor.failureExcerpt(lines, maxLines = 80)
+                else -> lines.filter { it.contains(queryFilter, ignoreCase = true) }
+            }
         }
 
         val totalLines = lines.size

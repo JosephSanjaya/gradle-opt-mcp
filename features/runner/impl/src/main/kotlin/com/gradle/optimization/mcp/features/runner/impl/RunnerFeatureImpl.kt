@@ -11,7 +11,10 @@ import com.gradle.optimization.mcp.features.runner.api.TaskOutcome
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
+import org.gradle.tooling.events.task.TaskFailureResult
 import org.gradle.tooling.events.task.TaskFinishEvent
+import org.gradle.tooling.events.task.TaskOperationResult
+import org.gradle.tooling.events.task.TaskSkippedResult
 import org.gradle.tooling.events.task.TaskSuccessResult
 import org.koin.core.annotation.Provided
 import org.koin.core.annotation.Single
@@ -33,6 +36,7 @@ class RunnerFeatureImpl(
         val stderrStream = ByteArrayOutputStream()
         val taskOutcomes = mutableListOf<TaskOutcome>()
         val startTime = System.currentTimeMillis()
+        var exceptionMessage: String? = null
 
         val success = runCatching {
             pool.withConnection(targetDir) { connection ->
@@ -43,15 +47,9 @@ class RunnerFeatureImpl(
                     .addProgressListener(
                         ProgressListener { event: ProgressEvent ->
                             if (event is TaskFinishEvent) {
-                                val outcomeStr = when (val result = event.result) {
-                                    is TaskSuccessResult -> when {
-                                        result.isUpToDate -> "UP-TO-DATE"
-                                        result.isFromCache -> "FROM-CACHE"
-                                        else -> "SUCCESS"
-                                    }
-                                    else -> result.javaClass.simpleName.replace("ResultImpl", "").uppercase()
-                                }
-                                taskOutcomes.add(TaskOutcome(event.descriptor.taskPath, outcomeStr))
+                                taskOutcomes.add(
+                                    TaskOutcome(event.descriptor.taskPath, mapOutcome(event.result))
+                                )
                             }
                         },
                         setOf(OperationType.TASK)
@@ -64,25 +62,51 @@ class RunnerFeatureImpl(
                 launcher.run()
             }
             true
-        }.getOrElse { false }
+        }.getOrElse { error ->
+            exceptionMessage = error.message?.takeIf { it.isNotBlank() } ?: error.toString()
+            false
+        }
 
         val executionTimeMs = System.currentTimeMillis() - startTime
         val combinedOutput = buildString {
             append(stdoutStream.toString(Charsets.UTF_8))
             append("\n")
             append(stderrStream.toString(Charsets.UTF_8))
+            if (!exceptionMessage.isNullOrBlank() && !contains(exceptionMessage!!)) {
+                append("\n")
+                append(exceptionMessage)
+            }
         }
         val errors = SourceErrorExtractor.extractErrors(combinedOutput)
+        val failureReason = SourceErrorExtractor.extractFailureReason(combinedOutput)
+            ?: exceptionMessage
 
         val runId = BuildLogStore.generateRunId()
         val cleanedLines = BuildLogStore.cleanAndDeduplicate(combinedOutput)
         BuildLogStore.saveLog(targetDir, runId, cleanedLines)
 
+        val logExcerpt = if (!success) {
+            SourceErrorExtractor.failureExcerpt(cleanedLines)
+        } else {
+            emptyList()
+        }
+
+        val failedTasks = taskOutcomes.filter { it.outcome == "FAILED" }.map { it.taskPath }
         val outputSummary = buildString {
             if (success) {
-                append("Gradle run succeeded in ${executionTimeMs}ms. Executed ${taskOutcomes.size} task(s).")
+                append("Gradle run succeeded in ${executionTimeMs}ms.")
+                append(" Requested: ${taskList.joinToString(", ")}.")
+                append(" Executed ${taskOutcomes.size} task(s).")
             } else {
-                append("Gradle run failed in ${executionTimeMs}ms. Found ${errors.size} error location(s).")
+                append("Gradle run failed in ${executionTimeMs}ms.")
+                append(" Requested: ${taskList.joinToString(", ")}.")
+                if (failedTasks.isNotEmpty()) {
+                    append(" Failed tasks: ${failedTasks.joinToString(", ")}.")
+                }
+                append(" Found ${errors.size} error location(s).")
+                if (!failureReason.isNullOrBlank()) {
+                    append(" Reason: ${failureReason.lines().first()}")
+                }
             }
         }.trim()
 
@@ -90,8 +114,11 @@ class RunnerFeatureImpl(
             runId = runId,
             success = success,
             executionTimeMs = executionTimeMs,
+            requestedTasks = taskList,
             tasksExecuted = taskOutcomes,
             parsedErrors = errors,
+            failureReason = if (success) null else failureReason,
+            logExcerpt = logExcerpt,
             outputSummary = outputSummary
         )
     }
@@ -103,4 +130,16 @@ class RunnerFeatureImpl(
 
         return BuildLogStore.readLog(targetDir, request)
     }
+
+    private fun mapOutcome(result: TaskOperationResult): String =
+        when (result) {
+            is TaskSuccessResult -> when {
+                result.isUpToDate -> "UP-TO-DATE"
+                result.isFromCache -> "FROM-CACHE"
+                else -> "SUCCESS"
+            }
+            is TaskFailureResult -> "FAILED"
+            is TaskSkippedResult -> "SKIPPED"
+            else -> "UNKNOWN"
+        }
 }

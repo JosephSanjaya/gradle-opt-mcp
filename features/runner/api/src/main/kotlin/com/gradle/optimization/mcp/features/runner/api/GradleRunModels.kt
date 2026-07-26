@@ -31,8 +31,11 @@ data class GradleRunResult(
     val runId: String? = null,
     val success: Boolean,
     val executionTimeMs: Long,
+    val requestedTasks: List<String> = emptyList(),
     val tasksExecuted: List<TaskOutcome> = emptyList(),
     val parsedErrors: List<GradleSourceError> = emptyList(),
+    val failureReason: String? = null,
+    val logExcerpt: List<String> = emptyList(),
     val outputSummary: String
 )
 
