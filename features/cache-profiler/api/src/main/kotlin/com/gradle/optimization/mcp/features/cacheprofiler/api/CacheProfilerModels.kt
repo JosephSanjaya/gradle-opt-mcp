@@ -14,8 +14,13 @@ data class CacheInvalidationEntry(
     val timestamp: Long,
     val formattedTime: String,
     val status: String,
+    val cacheAction: String? = null,
+    val requestedTasks: List<String> = emptyList(),
     val invalidationReasons: List<String> = emptyList(),
-    val inputDiffSummary: String? = null
+    val addedInputs: List<String> = emptyList(),
+    val removedInputs: List<String> = emptyList(),
+    val inputDiffSummary: String? = null,
+    val htmlReportPath: String? = null
 )
 
 @Serializable
@@ -23,5 +28,6 @@ data class CacheProfileResult(
     val projectDir: String,
     val totalEntriesFound: Int,
     val entries: List<CacheInvalidationEntry>,
-    val summary: String
+    val summary: String,
+    val preferAuditTool: String = "audit_configuration_cache_inputs"
 )
