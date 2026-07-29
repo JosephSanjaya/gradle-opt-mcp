@@ -15,12 +15,16 @@ object SourceErrorExtractor {
         """^([^\s:]+\.java):(\d+):\s*error:\s*(.+)$""",
         RegexOption.MULTILINE
     )
+    private val detektViolationRegex = Regex(
+        """^(\S+\.kt):(\d+):(\d+):\s+(.+)$""",
+        RegexOption.MULTILINE
+    )
     private val gradleScriptRegex = Regex(
         """(?:Build file|Script)\s+'([^']+)'\s+line:\s*(\d+)""",
         RegexOption.MULTILINE
     )
     private val testFailureRegex = Regex(
-        """^\s*([a-zA-Z0-9_.]+)\s+>\s+([a-zA-Z0-9_]+)\s+FAILED""",
+        """^\s*([a-zA-Z0-9_.]+)\s+>\s+(.+?)\s+FAILED$""",
         RegexOption.MULTILINE
     )
     private val taskNotFoundRegex = Regex(
@@ -54,6 +58,18 @@ object SourceErrorExtractor {
                     line = match.groupValues[2].toIntOrNull(),
                     message = match.groupValues[3].trim(),
                     errorType = "JAVA_COMPILER_ERROR"
+                )
+            )
+        }
+
+        detektViolationRegex.findAll(output).forEach { match ->
+            errors.add(
+                GradleSourceError(
+                    file = match.groupValues[1].trim(),
+                    line = match.groupValues[2].toIntOrNull(),
+                    column = match.groupValues[3].toIntOrNull(),
+                    message = match.groupValues[4].trim(),
+                    errorType = "DETEKT_VIOLATION"
                 )
             )
         }

@@ -58,6 +58,22 @@ class SourceErrorExtractorTest {
     }
 
     @Test
+    fun testExtractDetektViolations() {
+        val sampleOutput = """
+            /Users/dev/Project/src/Main.kt:4:1: Exceeded max line length (120) [MaximumLineLength]
+            /Users/dev/Project/src/Main.kt:4:1: Line detected, which is longer than the defined maximum line length in the code style. [MaxLineLength]
+        """.trimIndent()
+
+        val errors = SourceErrorExtractor.extractErrors(sampleOutput)
+
+        assertEquals(2, errors.size)
+        assertTrue(errors.all { it.errorType == "DETEKT_VIOLATION" })
+        assertTrue(errors.all { it.file == "/Users/dev/Project/src/Main.kt" && it.line == 4 })
+        assertTrue(errors.any { it.message.contains("[MaximumLineLength]") })
+        assertTrue(errors.any { it.message.contains("[MaxLineLength]") })
+    }
+
+    @Test
     fun testExtractGradleScriptErrors() {
         val sampleOutput = """
             * What went wrong:
@@ -72,6 +88,24 @@ class SourceErrorExtractorTest {
                 it.errorType == "BUILD_SCRIPT_ERROR" &&
                     it.file == "/Users/dev/Project/build.gradle.kts" &&
                     it.line == 12
+            }
+        )
+    }
+
+    @Test
+    fun testExtractTestFailureWithBacktickName() {
+        val sampleOutput = """
+            ScratchFailingTest > deliberately fails for repro FAILED
+                org.opentest4j.AssertionFailedError at ScratchFailingTest.kt:9
+        """.trimIndent()
+
+        val errors = SourceErrorExtractor.extractErrors(sampleOutput)
+
+        assertTrue(
+            errors.any {
+                it.errorType == "TEST_FAILURE" &&
+                    it.task == "deliberately fails for repro" &&
+                    it.message.contains("ScratchFailingTest.deliberately fails for repro")
             }
         )
     }
