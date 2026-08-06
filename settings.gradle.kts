@@ -3,6 +3,8 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 rootProject.name = "GradleOptMCPServer"
 
 pluginManagement {
+    includeBuild("buildlogic/sjy")
+    includeBuild("buildlogic/workspace")
     repositories {
         google {
             mavenContent {
@@ -29,6 +31,11 @@ dependencyResolutionManagement {
         mavenCentral()
         gradlePluginPortal()
         maven("https://repo.gradle.org/gradle/libs-releases")
+    }
+    versionCatalogs {
+        create("libs") {
+            from(files("buildlogic/sjy/gradle/libs.versions.toml"))
+        }
     }
 }
 

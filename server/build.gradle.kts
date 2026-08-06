@@ -1,5 +1,5 @@
 plugins {
-    id("tool.mcp.server")
+    id("com.sanjaya.buildlogic.jvm.mcp.server")
 }
 
 group = "com.gradle.optimization.mcp"
