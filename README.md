@@ -16,6 +16,7 @@
 - [Development](#development)
 - [Releases](#releases)
 - [Troubleshooting](#troubleshooting)
+- [Articles](#articles)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -131,6 +132,9 @@ Fix: run `java -jar <path>` manually from a terminal — if it starts without pr
 **A Gradle-backed tool call fails or times out**
 Cause: `GRADLE_PROJECT_DIR` points at a directory with no Gradle wrapper (no `gradlew`), or the target project itself fails to configure.
 Fix: point `GRADLE_PROJECT_DIR` at the project root containing `gradlew`, and confirm that project builds standalone first.
+
+## Articles
+- [How We Built an MCP Server in Kotlin — Keeping Stdio Clean for JSON-RPC](https://medium.com/gitconnected/how-we-built-an-mcp-server-in-kotlin-keeping-stdio-clean-for-json-rpc-095ff06923ea) — Why stdout is sacred on stdio, how we redirect logging to stderr, and the thin `Server` + transport shell that registers tools as plain handlers.
 
 ## Contributing
 1. Fork the repo and branch off `main`
